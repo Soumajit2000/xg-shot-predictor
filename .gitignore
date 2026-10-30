@@ -223,3 +223,4 @@ __marimo__/
 data/raw/
 __pycache__/
 .ipynb_checkpoints/
+data/processed/
