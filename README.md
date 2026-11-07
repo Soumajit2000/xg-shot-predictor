@@ -4,7 +4,7 @@ Will this shot be a goal? An end-to-end machine learning project that predicts t
 
 **Live app:** https://xg-shot-predictor.streamlit.app/
 
-![App screenshot](assets/app.png)
+![App screenshot](assets/app1.png)
 
 ---
 
