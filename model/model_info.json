@@ -1,0 +1,36 @@
+{
+  "trained_at_utc": "2026-11-06T20:57:29+00:00",
+  "scikit_learn_version": "1.9.1",
+  "random_state": 42,
+  "n_train": 4478,
+  "n_test": 1122,
+  "features": [
+    "x",
+    "y",
+    "distance_to_goal",
+    "shot_angle",
+    "minute",
+    "defenders_in_cone",
+    "opponents_within_5yd",
+    "keeper_distance_to_goal",
+    "under_pressure",
+    "first_time",
+    "one_on_one",
+    "aerial_won",
+    "open_goal",
+    "follows_dribble",
+    "body_part",
+    "technique",
+    "play_pattern",
+    "shot_type"
+  ],
+  "target": "is_goal",
+  "models": {
+    "Logistic Regression": "logistic_regression.joblib",
+    "Decision Tree": "decision_tree.joblib",
+    "KNN": "knn.joblib",
+    "Naive Bayes": "naive_bayes.joblib",
+    "Support Vector Machine": "svm.joblib"
+  },
+  "train_goal_rate": 0.0907
+}
