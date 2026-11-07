@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Arc, Rectangle
 from sklearn.metrics import classification_report, confusion_matrix
 
@@ -29,11 +30,94 @@ MODEL_DIR = ROOT / "model"
 SAMPLE_CSV = ROOT / "test_data.csv"
 XG_MODEL = "Logistic Regression"  # overall winner, used for the shot map
 
+# Design tokens
+TURF = "#2E6B45"
+TURF_DARK = "#285E3D"
+PAGE = "#FAFBF8"
+INK = "#15211A"
+LINE = "#C3CEC6"
+PITCH = "#F1F5F1"
+MISS = "#8A988F"
+
+plt.rcParams.update({"font.family": "sans-serif", "font.size": 9, "text.color": INK})
+
 st.set_page_config(page_title="xG Shot Predictor", page_icon="⚽", layout="wide")
+
+STYLE = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap');
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stSidebar"],
+[data-testid="stMarkdownContainer"], button, input, label {
+    font-family: 'Barlow', system-ui, sans-serif;
+}
+h1, h2, h3 { font-family: 'Barlow Condensed', 'Barlow', sans-serif; font-weight: 600; }
+#MainMenu, footer { visibility: hidden; }
+
+.hero {
+    background: repeating-linear-gradient(90deg, #2E6B45 0 56px, #285E3D 56px 112px);
+    border-radius: 6px;
+    padding: 28px 32px;
+    color: #FFFFFF;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 8px;
+}
+.hero h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 2.8rem;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0 0 10px 0;
+    padding: 0;
+    color: #FFFFFF;
+}
+.hero p { margin: 0; max-width: 60ch; font-size: 1.05rem; line-height: 1.45; opacity: 0.92; }
+.hero svg { flex-shrink: 0; }
+@media (max-width: 760px) { .hero svg { display: none; } .hero h1 { font-size: 2.2rem; } }
+
+[data-testid="stMetric"] {
+    background: #FFFFFF;
+    border: 1px solid #D8E0DA;
+    border-left: 4px solid #2E6B45;
+    border-radius: 4px;
+    padding: 10px 14px;
+}
+[data-testid="stMetricValue"] {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 2rem;
+    font-weight: 600;
+}
+button[data-baseweb="tab"] { font-size: 1rem; font-weight: 500; }
+</style>
+"""
+
+HERO = f"""
+<div class="hero">
+  <div>
+    <h1>xG Shot Predictor</h1>
+    <p>How likely was that shot to go in? Five classifiers trained on 5,600 shots
+    from the 2018 and 2022 World Cups and Euro 2020 and 2024, using where the shot
+    was taken, how it was struck and where the defenders stood.</p>
+  </div>
+  <svg width="170" height="96" viewBox="0 0 170 96" fill="none" stroke="#FFFFFF"
+       stroke-opacity="0.85" stroke-width="2" aria-hidden="true">
+    <rect x="61" y="2" width="48" height="5"/>
+    <rect x="15" y="7" width="140" height="56"/>
+    <rect x="50" y="7" width="70" height="22"/>
+    <path d="M62 63 A 26 26 0 0 0 108 63"/>
+    <circle cx="85" cy="47" r="2" fill="#FFFFFF"/>
+  </svg>
+</div>
+"""
+
+st.markdown(STYLE, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
-# Loading
+# Loading and evaluation
 # ---------------------------------------------------------------------------
 @st.cache_resource
 def load_models():
@@ -66,50 +150,65 @@ def to_true_xg(p, base_rate):
 def plot_confusion_matrix(y_true, y_pred):
     cm = confusion_matrix(y_true, y_pred)
     labels = ["No goal", "Goal"]
-    fig, ax = plt.subplots(figsize=(4.5, 3.8))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Greens", cbar=False,
-                xticklabels=labels, yticklabels=labels, ax=ax)
+    cmap = LinearSegmentedColormap.from_list("turf", ["#FFFFFF", TURF])
+    fig, ax = plt.subplots(figsize=(4.2, 3.4))
+    fig.patch.set_facecolor(PAGE)
+    sns.heatmap(cm, annot=True, fmt="d", cmap=cmap, cbar=False, linewidths=2,
+                linecolor=PAGE, xticklabels=labels, yticklabels=labels, ax=ax,
+                annot_kws={"size": 13, "weight": "bold"})
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
+    ax.tick_params(length=0)
     fig.tight_layout()
     return fig
 
 
-def draw_half_pitch():
-    """Attacking half of a StatsBomb pitch (120 x 80 units)."""
-    fig, ax = plt.subplots(figsize=(7, 8))
-    ax.set_facecolor("#3a7d44")
-    fig.patch.set_facecolor("#3a7d44")
-    line = {"edgecolor": "white", "linewidth": 1.5, "fill": False}
+def draw_pitch(bottom=70):
+    """Attacking end of a StatsBomb pitch, drawn vertically with the goal at the top."""
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
+    fig.patch.set_facecolor(PAGE)
+    ax.set_facecolor(PAGE)
+    line = {"edgecolor": LINE, "linewidth": 1.2, "fill": False}
 
-    ax.add_patch(Rectangle((60, 0), 60, 80, **line))      # half pitch
-    ax.add_patch(Rectangle((102, 18), 18, 44, **line))    # penalty area
-    ax.add_patch(Rectangle((114, 30), 6, 20, **line))     # six-yard box
-    ax.add_patch(Arc((108, 40), 20, 20, theta1=127, theta2=233, color="white", lw=1.5))
-    ax.add_patch(Arc((60, 40), 20, 20, theta1=270, theta2=90, color="white", lw=1.5))
-    ax.plot([120, 120], [36, 44], color="white", lw=5)     # goal mouth
-    ax.scatter(108, 40, s=12, color="white")               # penalty spot
+    ax.add_patch(Rectangle((0, 60), 80, 60, facecolor=PITCH, edgecolor=LINE, linewidth=1.2))
+    ax.add_patch(Rectangle((18, 102), 44, 18, **line))      # penalty area
+    ax.add_patch(Rectangle((30, 114), 20, 6, **line))       # six-yard box
+    ax.add_patch(Rectangle((36, 120), 8, 1.8, edgecolor=INK, linewidth=1.4, fill=False))  # goal
+    ax.add_patch(Arc((40, 108), 20, 20, theta1=217, theta2=323, color=LINE, lw=1.2))
+    ax.add_patch(Arc((40, 60), 20, 20, theta1=0, theta2=180, color=LINE, lw=1.2))
+    ax.scatter(40, 108, s=6, color=LINE)
 
-    ax.set_xlim(58, 122)
-    ax.set_ylim(-2, 82)
-    ax.invert_yaxis()
+    ax.set_xlim(-1, 81)
+    ax.set_ylim(bottom, 123)
     ax.set_aspect("equal")
     ax.axis("off")
     return fig, ax
 
 
+def marker_size(xg):
+    return 12 + 650 * np.asarray(xg)
+
+
 def plot_shot_map(df, xg):
-    fig, ax = draw_half_pitch()
+    fig, ax = draw_pitch(bottom=min(70, df["x"].min() - 2))
+    across, up = df["y"].to_numpy(), df["x"].to_numpy()
     goals = df[TARGET].to_numpy() == 1
-    order = np.argsort(xg)  # draw dangerous shots on top
-    points = ax.scatter(
-        df["x"].to_numpy()[order], df["y"].to_numpy()[order],
-        c=xg[order], s=20 + 400 * xg[order], cmap="YlOrRd", vmin=0, vmax=0.6,
-        edgecolors=np.where(goals[order], "black", "none"), linewidths=1.2, alpha=0.85,
-    )
-    bar = fig.colorbar(points, ax=ax, fraction=0.04, pad=0.02)
-    bar.set_label("Expected goals (xG)", color="white")
-    bar.ax.tick_params(colors="white")
+
+    ax.scatter(across[~goals], up[~goals], s=marker_size(xg[~goals]),
+               facecolors="none", edgecolors=MISS, linewidths=0.8, alpha=0.6)
+    ax.scatter(across[goals], up[goals], s=marker_size(xg[goals]),
+               facecolors=TURF, edgecolors="#FFFFFF", linewidths=0.7, alpha=0.95, zorder=3)
+
+    handles = [
+        ax.scatter([], [], s=90, facecolors=TURF, edgecolors="#FFFFFF", label="Goal"),
+        ax.scatter([], [], s=90, facecolors="none", edgecolors=MISS, label="No goal"),
+    ] + [
+        ax.scatter([], [], s=marker_size(v), facecolors="none", edgecolors=INK,
+                   linewidths=0.6, label=f"{v:.2f} xG")
+        for v in (0.05, 0.2, 0.5)
+    ]
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 0.02),
+              ncol=5, frameon=False, fontsize=8, handletextpad=0.4, columnspacing=1.4)
     fig.tight_layout()
     return fig
 
@@ -117,41 +216,42 @@ def plot_shot_map(df, xg):
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
-st.sidebar.header("1 · Upload test data")
-uploaded = st.sidebar.file_uploader("Test CSV with the 18 features and is_goal", type="csv")
+st.sidebar.header("Upload test data")
+uploaded = st.sidebar.file_uploader("CSV with the 18 features and is_goal", type="csv")
 st.sidebar.download_button(
-    "⬇️ Download sample test_data.csv",
+    "Download sample test_data.csv",
     data=SAMPLE_CSV.read_bytes(),
     file_name="test_data.csv",
     mime="text/csv",
 )
 
-st.sidebar.header("2 · Choose a model")
+st.sidebar.header("Choose a model")
 model_name = st.sidebar.selectbox("Classifier", list(MODEL_FILES))
 
 st.sidebar.divider()
 st.sidebar.caption(
-    "Data: [StatsBomb Open Data](https://github.com/statsbomb/open-data). "
-    "Models trained once offline; this app only loads and evaluates them."
+    "Data from [StatsBomb Open Data](https://github.com/statsbomb/open-data). "
+    "Models were trained once, offline; this app only loads and evaluates them."
 )
 
 # ---------------------------------------------------------------------------
-# Header
+# Header and empty state
 # ---------------------------------------------------------------------------
-st.title("⚽ xG Shot Predictor")
-st.markdown(
-    "**Will this shot be a goal?** Five classifiers trained on every shot from the "
-    "2018 & 2022 World Cups and Euro 2020 & 2024, using shot geometry, game "
-    "situation and defender positions at the moment of the strike."
-)
+st.markdown(HERO, unsafe_allow_html=True)
 
 if uploaded is None:
-    st.info(
-        "👈 Upload a test CSV from the sidebar to begin. "
-        "No file handy? Download the sample `test_data.csv` from the sidebar first."
-    )
-    with st.expander("Which columns does the CSV need?"):
-        st.write(", ".join(f"`{c}`" for c in FEATURES + [TARGET]))
+    left, right = st.columns([2, 3])
+    with left:
+        st.subheader("Start with a test file")
+        st.write(
+            "Upload a CSV of shots from the sidebar. Each row needs the 18 shot "
+            "features plus `is_goal`. No file handy? Download the sample first, "
+            "then upload it."
+        )
+        with st.expander("See the required columns"):
+            st.write(", ".join(f"`{c}`" for c in FEATURES + [TARGET]))
+    with right:
+        st.pyplot(draw_pitch()[0])
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -160,21 +260,15 @@ if uploaded is None:
 df = pd.read_csv(uploaded)
 missing = [c for c in FEATURES + [TARGET] if c not in df.columns]
 if missing:
-    st.error(f"The uploaded file is missing required columns: {', '.join(missing)}")
+    st.error(f"This file is missing required columns: {', '.join(missing)}. "
+             "Add them, or download the sample file to see the expected format.")
     st.stop()
 if df[TARGET].nunique() < 2:
-    st.error("The target column needs both goals (1) and non-goals (0) to compute the metrics.")
+    st.error("The is_goal column needs both goals (1) and non-goals (0) to compute the metrics.")
     st.stop()
 
-st.success(
-    f"Loaded **{len(df):,} shots**, of which **{int(df[TARGET].sum())} were goals** "
-    f"({df[TARGET].mean():.1%})."
-)
-
 models = load_models()
-tab_perf, tab_compare, tab_map = st.tabs(
-    ["📊 Model performance", "🏆 Compare all models", "🗺️ Shot map"]
-)
+tab_perf, tab_compare, tab_map = st.tabs(["Performance", "Compare models", "Shot map"])
 
 # ---------------------------------------------------------------------------
 # Tab 1: selected model
@@ -187,9 +281,9 @@ with tab_perf:
         col.metric(name, f"{value:.3f}")
 
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-    st.caption(
-        f"In plain football terms: the model caught **{tp} of {tp + fn} goals**, "
-        f"and of the **{tp + fp} shots** it flagged as goals, **{tp}** actually went in."
+    st.write(
+        f"In football terms: the model caught **{tp} of {tp + fn} goals**. "
+        f"Of the **{tp + fp} shots** it called as goals, **{tp}** went in."
     )
 
     left, right = st.columns(2)
@@ -207,35 +301,37 @@ with tab_perf:
 # Tab 2: all models side by side
 # ---------------------------------------------------------------------------
 with tab_compare:
-    st.subheader("All five models on the uploaded data")
+    st.subheader("All five models on this file")
     table = pd.DataFrame({name: evaluate(m, df)[2] for name, m in models.items()}).T
     st.dataframe(
-        table.style.format("{:.4f}").highlight_max(axis=0, color="#a5d6a7"),
+        table.style.format("{:.4f}").highlight_max(axis=0, color="#D5E8DA"),
         use_container_width=True,
     )
-    st.bar_chart(table[["AUC", "F1", "MCC"]])
+    st.bar_chart(table[["AUC", "F1", "MCC"]], color=[TURF, "#7FB394", "#C3CEC6"])
     st.caption(
-        f"Why accuracy misleads here: always predicting 'no goal' would already "
-        f"score {1 - df[TARGET].mean():.1%} accuracy while catching zero goals. "
-        "MCC, F1 and AUC tell the real story."
+        f"Accuracy flatters here: always predicting no goal would already score "
+        f"{1 - df[TARGET].mean():.1%} while catching zero goals. "
+        "AUC, F1 and MCC show which models actually find goals."
     )
 
 # ---------------------------------------------------------------------------
 # Tab 3: shot map
 # ---------------------------------------------------------------------------
 with tab_map:
-    st.subheader("Shot map coloured by expected goals")
     base_rate = load_model_info().get("train_goal_rate", 0.091)
     raw = models[XG_MODEL].predict_proba(df[FEATURES])[:, 1]
     xg = to_true_xg(raw, base_rate)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Shots", f"{len(df):,}")
-    c2.metric("Total xG", f"{xg.sum():.1f}")
-    c3.metric("Actual goals", int(df[TARGET].sum()))
-
-    st.pyplot(plot_shot_map(df, xg))
-    st.caption(
-        f"xG from the {XG_MODEL} model, the overall winner. Bigger, redder circles are "
-        "better chances; circles outlined in black were actual goals."
-    )
+    stats, pitch = st.columns([1, 3])
+    with stats:
+        st.subheader("Every shot")
+        st.metric("Shots", f"{len(df):,}")
+        st.metric("Goals", int(df[TARGET].sum()))
+        st.metric("Expected goals", f"{xg.sum():.1f}")
+        st.caption(
+            "Circle size is the chance quality from the Logistic Regression model, "
+            "the overall winner. Filled circles went in. When expected goals sits "
+            "close to actual goals, the model's probabilities are well calibrated."
+        )
+    with pitch:
+        st.pyplot(plot_shot_map(df, xg))
